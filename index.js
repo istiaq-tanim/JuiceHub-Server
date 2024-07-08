@@ -38,6 +38,18 @@ async function run() {
       const result = await juiceCollection.find().toArray()
       res.send(result)
     })
+
+    app.get("/juiceItem/:id", async (req, res) => {
+      const id = req.params
+      const item = { _id: new ObjectId(id) }
+      const response = await juiceCollection.findOne(item)
+      res.status(201).json({
+        success: true,
+        message: 'Juice Retrieved successfully',
+        response
+      });
+
+    })
     app.post("/juiceItems", async (req, res) => {
       const juiceItems = req.body;
       const result = await juiceCollection.insertOne(juiceItems)
@@ -45,7 +57,6 @@ async function run() {
     })
     app.delete("/juiceItems/:id", async (req, res) => {
       const id = req.params.id
-      console.log(id)
       const query = { _id: new ObjectId(id) }
       const result = await juiceCollection.deleteOne(query)
       res.send(result)
@@ -53,7 +64,6 @@ async function run() {
 
     app.put("/juiceItems", async (req, res) => {
       const item = req.body;
-      console.log(item)
       const id = item.id
       const query = { _id: new ObjectId(id) }
       const updateDoc = {
@@ -68,11 +78,10 @@ async function run() {
       };
       const result = await juiceCollection.updateOne(query, updateDoc)
       res.send(result)
-
     })
 
-    app.get("/popular",async(req,res)=>{
-      const products=await juiceCollection.find().sort({sellNumber:-1}).limit(6).toArray()
+    app.get("/popular", async (req, res) => {
+      const products = await juiceCollection.find().sort({ sellNumber: -1 }).limit(6).toArray()
       res.send(products)
     })
 
@@ -82,7 +91,6 @@ async function run() {
       const user = req.body;
       const query = { email: user.email }
       const existUser = await usersCollection.findOne(query)
-      console.log("exist user", existUser)
       if (existUser) {
         return res.send({ message: "user exist" })
       }
@@ -94,11 +102,42 @@ async function run() {
       const result = await usersCollection.find().toArray()
       res.send(result)
     })
+    app.get("/user", async (req, res) => {
+      const email = req.query.email;
+      if (!email) {
+        res.send([])
+      }
+      const query = { email: email }
+      const result = await usersCollection.findOne(query)
+      res.send(result)
+    })
+
+    app.put("/updateUser", async (req, res) => {
+      const { email, user } = req.body;
+      const query = { email: email }
+      console.log(email, user)
+      const updateDoc = {
+        $set: {
+          name: user.name,
+          about: user.about,
+          phone: user.phone,
+          country: user.country,
+          occupation: user.occupation,
+          city: user.city,
+          street: user.street,
+          photo: user.photo,
+          email: user.email,
+          role: user.role
+        }
+      };
+      const result = await usersCollection.updateOne(query, updateDoc)
+      console.log(result)
+      res.send(result)
+    })
 
     app.delete("/users/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) }
-      console.log(query)
       const result = await usersCollection.deleteOne(query)
       res.send(result)
     })
@@ -127,6 +166,24 @@ async function run() {
 
 
     //cart api
+    app.post("/addCart", async (req, res) => {
+      const cartItem = req.body;
+
+      const filter = { menuId: cartItem.menuId }
+      const existItem = await cartCollection.findOne(filter)
+
+      if (!existItem) {
+        cartItem.orderQuantity = 1
+        const result = await cartCollection.insertOne(cartItem)
+        res.send(result)
+      }
+      else {
+        const updateCart = { ...existItem, orderQuantity: existItem.orderQuantity + 1 }
+        const result = await cartCollection.updateOne(filter, { $set: updateCart });
+        res.send(result)
+      }
+
+    })
 
     app.get("/carts", async (req, res) => {
       const email = req.query.email;
@@ -138,18 +195,37 @@ async function run() {
       res.send(result)
 
     })
-    app.post("/carts", async (req, res) => {
-      const cart = req.body;
-      const result = await cartCollection.insertOne(cart)
+    app.patch("/incrementCart/:id", async (req, res) => {
+      const id = req.params.id
+      const filter = { _id: new ObjectId(id) }
+      const existProduct = await cartCollection.findOne(filter)
+      if (existProduct) {
+        const updateCart = { ...existProduct, orderQuantity: existProduct.orderQuantity + 1 }
+        const result = await cartCollection.updateOne(filter, { $set: updateCart })
+        res.send(result)
+      }
+    })
+    app.patch("/decrementCart/:id", async (req, res) => {
+      const id = req.params.id
+      const filter = { _id: new ObjectId(id) }
+      const existProduct = await cartCollection.findOne(filter)
+      if (existProduct.orderQuantity > 1) {
+        const updateCart = { ...existProduct, orderQuantity: existProduct.orderQuantity - 1 }
+        const result = await cartCollection.updateOne(filter, { $set: updateCart })
+        res.send(result)
+      }
+      else {
+        const result = await cartCollection.deleteOne(filter)
+        res.send(result)
+      }
+    })
+    app.delete("/deleteCart/:id", async (req, res) => {
+      const id = req.params.id
+      const filter = { _id: new ObjectId(id) }
+      const result = await cartCollection.deleteOne(filter)
       res.send(result)
     })
 
-    app.delete("/carts/:id", async (req, res) => {
-      const id = req.params.id
-      const query = { _id: new ObjectId(id) }
-      const result = await cartCollection.deleteOne(query)
-      res.send(result)
-    })
 
     app.post('/create-payment-intent', async (req, res) => {
       const { price } = req.body;
@@ -177,13 +253,32 @@ async function run() {
       res.send(result)
     })
 
+    //user Review
+
+    app.post('/addReview', async (req, res) => {
+      const { productId, review } = req.body;
+      try {
+        const result = await juiceCollection.updateOne(
+          { _id: new ObjectId(productId) },
+          { $push: { reviews: { ...review, date: new Date() } } }
+        );
+        await reviewCollection.insertOne(review)
+
+        if (result.modifiedCount === 0) {
+          return res.status(404).send('Product not found');
+        }
+        res.send(result)
+      } catch (error) {
+        res.status(500).send('Server error');
+      }
+    });
+
     // payment 
 
     app.post("/payment", async (req, res) => {
       const items = req.body;
       const insertResult = await paymentCollection.insertOne(items)
       const productIds = items.menuItems.map((id) => new ObjectId(id));
-      console.log(productIds)
       const updateResult = await juiceCollection.updateMany(
         { _id: { $in: productIds } },
         { $inc: { sellNumber: 1, available: -1 } }
@@ -195,23 +290,23 @@ async function run() {
 
     })
 
-    app.get("/payment",async(req,res)=>{
-      const email=req.query.email;
-      const query={email:email}
-      const result=await paymentCollection.find(query).sort({ date: -1}).toArray()
+    app.get("/payment", async (req, res) => {
+      const email = req.query.email;
+      const query = { email: email }
+      const result = await paymentCollection.find(query).sort({ date: -1 }).toArray()
       res.send(result)
     })
 
-    app.get("/adminHome",async(req,res)=>{
-      const query={role:"user"}
-      const customers=await usersCollection.find(query).toArray()
-      const products=await juiceCollection.estimatedDocumentCount()
-      const orders=await cartCollection.estimatedDocumentCount()
-      const totalCustomers=customers.length;
-      const payment=await paymentCollection.find().toArray()
-      
-      const revenue=parseFloat(payment.reduce((sum,item)=> sum + item.price,0).toFixed(2))
-      const adminStat={
+    app.get("/adminHome", async (req, res) => {
+      const query = { role: "user" }
+      const customers = await usersCollection.find(query).toArray()
+      const products = await juiceCollection.estimatedDocumentCount()
+      const orders = await cartCollection.estimatedDocumentCount()
+      const totalCustomers = customers.length;
+      const payment = await paymentCollection.find().toArray()
+
+      const revenue = parseFloat(payment.reduce((sum, item) => sum + item.price, 0).toFixed(2))
+      const adminStat = {
         totalCustomers,
         revenue,
         orders,
@@ -220,35 +315,74 @@ async function run() {
       res.send(adminStat)
     })
 
-    app.get("/userHome",async(req,res)=>{
-      const email=req.query.email;
-      const query={email:email}
-      const reviews=await reviewCollection.find(query).toArray()
-      const reviewCount=reviews.length
-      const carts=await cartCollection.find(query).toArray()
-      const cartsCount=carts.length;
-      const payments=await paymentCollection.find(query).toArray()
-      const paymentCounts=payments.length;
+    app.get("/userHome", async (req, res) => {
+      const email = req.query.email;
+      const query = { email: email }
+      const reviews = await reviewCollection.find(query).toArray()
+      const reviewCount = reviews.length
+      const carts = await cartCollection.find(query).toArray()
+      const cartsCount = carts.length;
+      const payments = await paymentCollection.find(query).toArray()
+      const paymentCounts = payments.length;
 
-      const shop=parseFloat(payments.reduce((sum,item)=> sum + item.price,0).toFixed(2))
-      const stat=
+      const shop = parseFloat(payments.reduce((sum, item) => sum + item.price, 0).toFixed(2))
+      const stat =
       {
         reviewCount,
         cartsCount,
-        paymentCounts,shop
+        paymentCounts, shop
       }
       res.send(stat)
     })
 
-    app.get('/orderStats', async(req, res) =>{
+    app.get('/payments/last-year', async (req, res) => {
+      const email = req.query.email;
+
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
       const pipeline = [
         {
-          $addFields:{
-            juicesItemsObjectIds:{
-              $map:{
-                input:"$menuItems",
-                as:"itemId",
-                in:{$toObjectId:"$$itemId"}
+          $match: {
+            email: email,
+            date: { $gte: oneYearAgo.toISOString() }
+          }
+        },
+        {
+          $addFields: {
+            dateParsed: { $dateFromString: { dateString: "$date" } }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              year: { $year: "$dateParsed" },
+              month: { $month: "$dateParsed" }
+            },
+            totalAmount: { $sum: "$price" },
+            transactions: { $push: "$$ROOT" }
+          }
+        },
+        {
+          $sort: { "_id.year": -1, "_id.month": -1 }
+        }
+      ];
+
+      console.log('Pipeline:', JSON.stringify(pipeline, null, 2));
+
+      const transactions = await paymentCollection.aggregate(pipeline).toArray();
+      res.send(transactions)
+
+    });
+
+    app.get('/orderStats', async (req, res) => {
+      const pipeline = [
+        {
+          $addFields: {
+            juicesItemsObjectIds: {
+              $map: {
+                input: "$menuItems",
+                as: "itemId",
+                in: { $toObjectId: "$$itemId" }
               }
             }
           }
@@ -280,11 +414,10 @@ async function run() {
             _id: 0
           }
         }
-       
+
       ];
-      
+
       const result = await paymentCollection.aggregate(pipeline).toArray()
-      console.log(result)
       res.send(result)
 
     })
